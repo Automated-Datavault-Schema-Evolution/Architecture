@@ -1,0 +1,71 @@
+@startuml
+|CSV Source System|
+start
+:Store data in CSV files;
+
+|Filewatcher|
+:Monitor file system directory;
+if (New CSV file detected?) then (yes)
+  :Detect file creation event;
+  if (Modify after initial write?) then (yes)
+    :Detect file modification event;
+  endif
+  :Compute CSV schema (columns, types);
+  if (Schema has changed vs. last scan?) then (yes)
+    :Flag schema_evolution = true;
+  else (no)
+    :Flag schema_evolution = false;
+  endif
+  :Publish event to streaming topic:
+  {
+    file, action, schema_evolution
+  };
+endif
+
+|Kafka Service|
+:Receive events on streaming topic;
+:Store in topic log until consumed;
+:Serialize CSV into JSON message;
+
+|Schema Evolution Framework|
+:Listen for schema_evolution events;
+if (schema_evolution == true) then (yes)
+  :Fetch latest CSV schema;
+  :Alter Data Lake schema:
+    - Parquet: merge schema
+    - Postgres: ALTER TABLE ADD/DROP/COLUMN;
+  :Alter Data Vault schema:
+    - Add/modify hubs, satellites, links;
+  :Alter Presentation Layer views:
+    - Rebuild star schema
+;
+endif
+
+|Kafka Consumer|
+:Subscribe to streaming topic;
+:Deserialize JSON events;
+:For each event:
+  - Extract file path, action
+  - Read streaming message into DataFrame;
+
+|Datalake Handler|
+:Check DATA_LAKE_MODE;
+
+  if (MODE) then (parquet)
+    :Write DataFrame to corresponding parquet file;
+  else (rdbms)
+    :Connect to Postgres;
+    :Write DataFrame to table;
+  endif
+
+|Data Vault|
+:Scan Data Lake for new/updated tables/files;
+:Read data into DataFrame;
+:Load into Raw Vault (hubs & satellites);
+
+|Presentation Layer|
+:Generate/refresh star-schema views;
+  - Create dimension tables
+  - Create fact tables
+stop
+@enduml
