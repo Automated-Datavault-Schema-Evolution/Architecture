@@ -2,26 +2,31 @@
 
 ````mermaid
 sequenceDiagram
-%% Control flow from schema change detection to publication
-    participant FW as File-Watch Ingest
+    participant FW as File‑Watch Ingest
     participant EB as Event Bus
-    participant SEF as SEF Core
+    participant CD as Change Director
+    participant IA as Impact Analyzer
+    participant PE as Policy Engine
+    participant PL as Migration Planner
+    participant EX as Executor
     participant LH as Lake Handler
-    participant DV as Vault Handler
-    participant ORC as Orchestrator
+    participant VH as Vault Handler
+    participant VR as Verifier
+    participant PUB as Publisher
+    participant OR as Orchestrator
     FW ->> EB: ChangeDetected(dataset, header, change_hint)
-    EB ->> SEF: Deliver change event
-    SEF ->> SEF: Validate and deduplicate
-    SEF ->> SEF: Load prior schema from Metadata Store
-    SEF ->> SEF: Compute diff and classify changes
-    SEF ->> SEF: Perform impact analysis<br/>and evaluate policies
-    SEF ->> LH: Generate lake evolution plan
-    SEF ->> DV: Generate vault evolution plan
-    SEF ->> LH: Execute lake operations (idempotent)
-    SEF ->> DV: Execute vault operations (idempotent)
-    SEF ->> SEF: Verify structural and semantic integrity
-    SEF ->> SEF: Update Metadata and Audit Log
-    SEF ->> EB: Publish SchemaEvolved(dataset, new_version, compatibility)
-    EB ->> ORC: Trigger dependent pipelines
+    EB ->> CD: Deliver(event)
+    CD ->> CD: Validate, deduplicate, acquire dataset lock
+    CD ->> IA: Load prior schema, compute diff
+    IA ->> PE: Impact set (with lineage)
+    PE ->> PL: Policy outcome (decisions, obligations)
+    PL ->> EX: Ordered, checkpointed plan (idempotency keys)
+    EX ->> LH: Apply lake operations (idempotent)
+    EX ->> VH: Apply vault operations (idempotent)
+    EX ->> VR: Notify completion at checkpoint
+    VR ->> VR: Structural + semantic checks, lineage recheck
+    VR ->> PUB: Verification passed → publish SchemaEvolved
+    PUB ->> EB: Emit(schema.evolved)
+    EB ->> OR: Trigger downstream pipelines
 
 ````
